@@ -134,7 +134,7 @@ export default function ConfiguratorStudio() {
 
   return (
     <div
-      className="relative h-[100dvh] w-full overflow-hidden"
+      className="relative flex h-[100dvh] w-full flex-col overflow-hidden sm:block"
       style={{
         background: `radial-gradient(120% 120% at 50% 30%, ${bg} 0%, #0b0b0d 60%, #08080a 100%)`,
       }}
@@ -145,42 +145,46 @@ export default function ConfiguratorStudio() {
       onDragLeave={() => setDragOver(false)}
       onDrop={onDrop}
     >
-      {mounted && (
-        <Canvas
-          shadows
-          dpr={[1, 2]}
-          camera={{ position: [3.4, 1.6, 4.4], fov: 45 }}
-          gl={{ antialias: true, alpha: true, powerPreference: "high-performance" }}
-        >
-          <ambientLight intensity={0.5} />
-          <directionalLight
-            position={[4, 6, 4]}
-            intensity={2.2}
-            castShadow
-            shadow-mapSize={[1024, 1024]}
-          />
-          <directionalLight position={[-5, 2, -3]} intensity={0.6} />
+      {/* 3D stage — a sized region on mobile (top half) so the model is never
+          hidden behind the sheet; full-bleed behind the floating panel on ≥sm. */}
+      <div className="relative min-h-0 flex-1 sm:absolute sm:inset-0 sm:flex-none">
+        {mounted && (
+          <Canvas
+            shadows
+            dpr={[1, 2]}
+            camera={{ position: [3.4, 1.6, 4.4], fov: 45 }}
+            gl={{ antialias: true, alpha: true, powerPreference: "high-performance" }}
+          >
+            <ambientLight intensity={0.5} />
+            <directionalLight
+              position={[4, 6, 4]}
+              intensity={2.2}
+              castShadow
+              shadow-mapSize={[1024, 1024]}
+            />
+            <directionalLight position={[-5, 2, -3]} intensity={0.6} />
 
-          <ErrorBoundary key={modelUrl ?? "demo"} onError={handleModelError}>
-            <Model url={modelUrl} overrides={overrides} onParts={handleParts} />
-          </ErrorBoundary>
+            <ErrorBoundary key={modelUrl ?? "demo"} onError={handleModelError}>
+              <Model url={modelUrl} overrides={overrides} onParts={handleParts} />
+            </ErrorBoundary>
 
-          <ContactShadows position={[0, -1.35, 0]} opacity={0.5} scale={10} blur={2.6} far={4} />
-          <Environment resolution={256}>
-            <Lightformer intensity={2} position={[0, 3, -2]} scale={[8, 3, 1]} />
-            <Lightformer intensity={1.3} position={[-4, 1, 2]} scale={[4, 4, 1]} />
-            <Lightformer intensity={1} position={[4, 1, 2]} scale={[4, 4, 1]} />
-          </Environment>
+            <ContactShadows position={[0, -1.35, 0]} opacity={0.5} scale={10} blur={2.6} far={4} />
+            <Environment resolution={256}>
+              <Lightformer intensity={2} position={[0, 3, -2]} scale={[8, 3, 1]} />
+              <Lightformer intensity={1.3} position={[-4, 1, 2]} scale={[4, 4, 1]} />
+              <Lightformer intensity={1} position={[4, 1, 2]} scale={[4, 4, 1]} />
+            </Environment>
 
-          <OrbitControls
-            autoRotate={autoRotate}
-            autoRotateSpeed={1.1}
-            enablePan={false}
-            minDistance={2.4}
-            maxDistance={9}
-          />
-        </Canvas>
-      )}
+            <OrbitControls
+              autoRotate={autoRotate}
+              autoRotateSpeed={1.1}
+              enablePan={false}
+              minDistance={2.4}
+              maxDistance={9}
+            />
+          </Canvas>
+        )}
+      </div>
 
       {/* Drag overlay */}
       {dragOver && (
@@ -197,8 +201,9 @@ export default function ConfiguratorStudio() {
         </span>
       </div>
 
-      {/* Control panel */}
-      <div className="pointer-events-auto absolute inset-x-2 bottom-2 max-h-[68vh] overflow-y-auto overscroll-contain rounded-2xl border border-border bg-surface/85 p-4 backdrop-blur-xl sm:inset-x-auto sm:bottom-4 sm:right-4 sm:top-4 sm:max-h-[calc(100dvh-2rem)] sm:w-80 sm:p-5">
+      {/* Control panel — in-flow bottom sheet on mobile (never covers the
+          stage); floating side panel on ≥sm. */}
+      <div className="pointer-events-auto z-10 w-full shrink-0 max-h-[52dvh] overflow-y-auto overscroll-contain rounded-t-2xl border border-border bg-surface/90 p-4 backdrop-blur-xl sm:absolute sm:inset-x-auto sm:right-4 sm:top-4 sm:bottom-4 sm:max-h-[calc(100dvh-2rem)] sm:w-80 sm:rounded-2xl sm:bg-surface/85 sm:p-5">
         <h1 className="font-heading text-lg font-bold text-fg">Material Studio</h1>
         <p className="mt-1 text-xs text-faint">
           Load any GLB, tweak each part, copy the config into your project.
