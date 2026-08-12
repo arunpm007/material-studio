@@ -62,6 +62,22 @@ type NumKey =
 type ColKey = "color" | "emissive" | "sheenColor";
 type BoolKey = "wireframe" | "flatShading";
 
+type GroupKey = "base" | "surface" | "transmission" | "effects" | "display";
+// Which MatConfig fields belong to each collapsible group — drives per-group reset.
+const GROUP_KEYS: Record<GroupKey, (keyof MatConfig)[]> = {
+  base: ["color", "emissive", "emissiveIntensity"],
+  surface: ["metalness", "roughness", "clearcoat", "clearcoatRoughness", "envMapIntensity"],
+  transmission: ["transmission", "ior", "thickness", "opacity"],
+  effects: ["sheen", "sheenColor", "iridescence"],
+  display: ["wireframe", "flatShading"],
+};
+
+// Case-insensitive for hex strings; strict otherwise.
+const sameVal = (a: unknown, b: unknown) =>
+  typeof a === "string" && typeof b === "string"
+    ? a.toLowerCase() === b.toLowerCase()
+    : a === b;
+
 // ---------------------------------------------------------------- small UI atoms
 
 function Field({ label, children }: { label: ReactNode; children: ReactNode }) {
@@ -89,38 +105,79 @@ function Switch({ on }: { on: boolean }) {
   );
 }
 
+function ResetIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className={className}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M3 12a9 9 0 1 0 3-6.7L3 8m0-5v5h5" />
+    </svg>
+  );
+}
+
 function Section({
   title,
   open,
   onToggle,
+  dirty,
+  onReset,
   children,
 }: {
   title: string;
   open: boolean;
   onToggle: () => void;
+  dirty?: boolean;
+  onReset?: () => void;
   children: ReactNode;
 }) {
   return (
     <div className="rounded-xl border border-border bg-surface-2/30">
-      <button
-        type="button"
-        onClick={onToggle}
-        className="flex w-full items-center justify-between px-3 py-2 text-xs font-medium uppercase tracking-wider text-muted transition-colors hover:text-fg"
-      >
-        <span>{title}</span>
-        <svg
-          viewBox="0 0 24 24"
-          className={`h-3.5 w-3.5 transition-transform ${open ? "rotate-180" : ""}`}
-          fill="none"
-          stroke="currentColor"
-          strokeWidth={2.2}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          aria-hidden="true"
+      <div className="flex w-full items-center px-3 py-2 text-xs font-medium uppercase tracking-wider text-muted">
+        <button
+          type="button"
+          onClick={onToggle}
+          className="flex-1 text-left transition-colors hover:text-fg"
         >
-          <path d="M6 9l6 6 6-6" />
-        </svg>
-      </button>
+          {title}
+        </button>
+        {dirty && onReset && (
+          <button
+            type="button"
+            onClick={onReset}
+            title={`Reset ${title}`}
+            aria-label={`Reset ${title}`}
+            className="mr-1 rounded p-1 text-faint transition-colors hover:text-accent-soft"
+          >
+            <ResetIcon className="h-3.5 w-3.5" />
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-label={open ? "Collapse section" : "Expand section"}
+          className="rounded p-1 transition-colors hover:text-fg"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            className={`h-3.5 w-3.5 transition-transform ${open ? "rotate-180" : ""}`}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={2.2}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M6 9l6 6 6-6" />
+          </svg>
+        </button>
+      </div>
       {open && <div className="space-y-3 px-3 pb-3">{children}</div>}
     </div>
   );
@@ -134,6 +191,7 @@ export default function ConfiguratorStudio() {
   const [urlInput, setUrlInput] = useState("");
   const [parts, setParts] = useState<PartInfo[]>([]);
   const [overrides, setOverrides] = useState<Overrides>({});
+  const [baseline, setBaseline] = useState<Overrides>({});
   const [selected, setSelected] = useState<string | null>(null);
   const [bg, setBg] = useState("#1a1712");
   const [copied, setCopied] = useState(false);
@@ -190,14 +248,14 @@ export default function ConfiguratorStudio() {
     }
   };
 
-  // Called by the model once it knows its parts (new model → reseed).
+  // Called by the model once it knows its parts (new model → reseed + snapshot
+  // the pristine baseline so every edit can be reverted).
   const handleParts = useCallback((p: PartInfo[]) => {
     setParts(p);
-    setOverrides(
-      Object.fromEntries(
-        p.map(({ name, ...cfg }) => [name, cfg as MatConfig])
-      )
-    );
+    const seed = () =>
+      Object.fromEntries(p.map(({ name, ...cfg }) => [name, { ...cfg } as MatConfig]));
+    setOverrides(seed());
+    setBaseline(seed());
     setSelected((prev) =>
       prev && p.some((x) => x.name === prev) ? prev : p[0]?.name ?? null
     );
@@ -304,6 +362,43 @@ export default function ConfiguratorStudio() {
 
   const sel = selected ? overrides[selected] : null;
   const activeClip = clips.find((c) => c.name === animClip) ?? clips[0] ?? null;
+
+  // ---- reset (revert edits to the pristine baseline) -----------------------
+  const partDirty = (name: string) => {
+    const cur = overrides[name];
+    const base = baseline[name];
+    if (!cur || !base) return false;
+    return (Object.keys(cur) as (keyof MatConfig)[]).some((k) => !sameVal(cur[k], base[k]));
+  };
+  const groupDirty = (name: string, g: GroupKey) => {
+    const cur = overrides[name];
+    const base = baseline[name];
+    if (!cur || !base) return false;
+    return GROUP_KEYS[g].some((k) => !sameVal(cur[k], base[k]));
+  };
+  const anyDirty = parts.some((p) => partDirty(p.name));
+
+  const resetAll = () =>
+    setOverrides(
+      Object.fromEntries(Object.entries(baseline).map(([k, v]) => [k, { ...v }]))
+    );
+  const resetPart = (name: string) =>
+    setOverrides((o) => ({ ...o, [name]: { ...baseline[name] } }));
+  const resetGroup = (name: string, g: GroupKey) =>
+    setOverrides((o) => {
+      const base = baseline[name];
+      const patch = Object.fromEntries(
+        GROUP_KEYS[g].map((k) => [k, base[k]])
+      ) as Partial<MatConfig>;
+      return { ...o, [name]: { ...o[name], ...patch } };
+    });
+  // Per-group reset props for a Section (guards the possibly-null selection).
+  const groupProps = (g: GroupKey) => ({
+    dirty: selected ? groupDirty(selected, g) : false,
+    onReset: () => {
+      if (selected) resetGroup(selected, g);
+    },
+  });
 
   // ---- material row helpers (depend on the selected part) ------------------
   const range = (label: string, key: NumKey, min = 0, max = 1, step = 0.01) => {
@@ -538,9 +633,22 @@ export default function ConfiguratorStudio() {
 
         {/* Parts */}
         <div className="mt-5">
-          <p className="mb-2 text-xs font-medium uppercase tracking-wider text-muted">
-            Parts <span className="text-faint">({parts.length})</span>
-          </p>
+          <div className="mb-2 flex items-center justify-between">
+            <p className="text-xs font-medium uppercase tracking-wider text-muted">
+              Parts <span className="text-faint">({parts.length})</span>
+            </p>
+            {anyDirty && (
+              <button
+                type="button"
+                onClick={resetAll}
+                className="inline-flex items-center gap-1 text-xs text-faint transition-colors hover:text-accent-soft"
+                title="Reset every part to its original material"
+              >
+                <ResetIcon className="h-3 w-3" />
+                Reset all
+              </button>
+            )}
+          </div>
           <div className="flex flex-wrap gap-1.5">
             {parts.map((p) => (
               <button
@@ -562,13 +670,13 @@ export default function ConfiguratorStudio() {
         {/* Material controls */}
         {sel && (
           <div className="mt-4 space-y-2.5">
-            <Section title="Base color" open={groups.base} onToggle={() => toggleGroup("base")}>
+            <Section title="Base color" open={groups.base} onToggle={() => toggleGroup("base")} {...groupProps("base")}>
               {color("Color", "color")}
               {color("Emissive", "emissive")}
               {range("Emissive glow", "emissiveIntensity", 0, 4, 0.05)}
             </Section>
 
-            <Section title="Surface" open={groups.surface} onToggle={() => toggleGroup("surface")}>
+            <Section title="Surface" open={groups.surface} onToggle={() => toggleGroup("surface")} {...groupProps("surface")}>
               {range("Metalness", "metalness")}
               {range("Roughness", "roughness")}
               {range("Clearcoat", "clearcoat")}
@@ -576,23 +684,34 @@ export default function ConfiguratorStudio() {
               {range("Reflections", "envMapIntensity", 0, 3, 0.05)}
             </Section>
 
-            <Section title="Transmission (glass)" open={groups.transmission} onToggle={() => toggleGroup("transmission")}>
+            <Section title="Transmission (glass)" open={groups.transmission} onToggle={() => toggleGroup("transmission")} {...groupProps("transmission")}>
               {range("Transmission", "transmission")}
               {range("IOR", "ior", 1, 2.333, 0.01)}
               {range("Thickness", "thickness", 0, 5, 0.1)}
               {range("Opacity", "opacity")}
             </Section>
 
-            <Section title="Effects" open={groups.effects} onToggle={() => toggleGroup("effects")}>
+            <Section title="Effects" open={groups.effects} onToggle={() => toggleGroup("effects")} {...groupProps("effects")}>
               {range("Sheen", "sheen")}
               {color("Sheen color", "sheenColor")}
               {range("Iridescence", "iridescence")}
             </Section>
 
-            <Section title="Display" open={groups.display} onToggle={() => toggleGroup("display")}>
+            <Section title="Display" open={groups.display} onToggle={() => toggleGroup("display")} {...groupProps("display")}>
               {toggle("Wireframe", "wireframe")}
               {toggle("Flat shading", "flatShading")}
             </Section>
+
+            {selected && partDirty(selected) && (
+              <button
+                type="button"
+                onClick={() => resetPart(selected)}
+                className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-border bg-surface-2/40 px-3 py-2 text-xs text-muted transition-colors hover:border-accent/40 hover:text-accent-soft"
+              >
+                <ResetIcon className="h-3.5 w-3.5" />
+                Reset “{selected}” to original
+              </button>
+            )}
           </div>
         )}
 

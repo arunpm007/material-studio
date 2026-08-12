@@ -8,6 +8,7 @@ A developer tool for **editing 3D model materials in the browser**. Load any glT
 
 - **Load any model** — paste a `.glb`/`.gltf` URL, drag-and-drop a file, or load a built-in sample (static or animated). The tool traverses the model, discovers every mesh/part, and normalizes its size automatically.
 - **Full-PBR per-part editing** — every part is upgraded to a `MeshPhysicalMaterial`, so you can tune the complete set with instant feedback: base **colour** + **emissive**, **metalness**, **roughness**, **clearcoat**, **reflections**, **transmission / IOR / thickness** (glass), **sheen**, **iridescence**, **opacity**, plus **wireframe** and **flat-shading** — grouped into collapsible sections.
+- **Revert any edit** — reset a single **group** (icon in each group header), the whole selected **part**, or **all parts** back to the model's original materials; controls only appear once something is actually changed.
 - **Animation playback** — for rigged models, pick a clip, **play / pause**, **loop**, change **speed**, and **scrub** the timeline.
 - **Hold-to-inspect** — grabbing the model instantly stops auto-spin so it holds still while you match a colour on a given face; adjustable spin speed and a one-click **Reset view**.
 - **Environment lighting** — procedural **Studio** lighting, streamable **HDRI presets**, or your own **`.hdr` / `.exr`** upload, optionally shown as the background.
