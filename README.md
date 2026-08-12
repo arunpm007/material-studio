@@ -6,10 +6,12 @@ A developer tool for **editing 3D model materials in the browser**. Load any glT
 
 ## Features
 
-- **Load any model** — paste a `.glb`/`.gltf` URL, drag-and-drop a file, or load the built-in sample. The tool traverses the model, discovers every mesh/part, and normalizes its size automatically.
-- **Per-part material editing** — pick a part and adjust **colour** (colour picker + hex), **metalness** and **roughness** with instant feedback.
+- **Load any model** — paste a `.glb`/`.gltf` URL, drag-and-drop a file, or load a built-in sample (static or animated). The tool traverses the model, discovers every mesh/part, and normalizes its size automatically.
+- **Full-PBR per-part editing** — every part is upgraded to a `MeshPhysicalMaterial`, so you can tune the complete set with instant feedback: base **colour** + **emissive**, **metalness**, **roughness**, **clearcoat**, **reflections**, **transmission / IOR / thickness** (glass), **sheen**, **iridescence**, **opacity**, plus **wireframe** and **flat-shading** — grouped into collapsible sections.
+- **Animation playback** — for rigged models, pick a clip, **play / pause**, **loop**, change **speed**, and **scrub** the timeline.
+- **Hold-to-inspect** — grabbing the model instantly stops auto-spin so it holds still while you match a colour on a given face; adjustable spin speed and a one-click **Reset view**.
+- **Environment lighting** — procedural **Studio** lighting, streamable **HDRI presets**, or your own **`.hdr` / `.exr`** upload, optionally shown as the background.
 - **Copy the config out** — a live JSON export you can copy and drop into your own project to reproduce the exact look.
-- **Studio rendering** — procedural environment lighting (no external HDRIs), contact shadows, a customizable backdrop, and orbit + auto-rotate.
 - **Resilient** — bad URLs / unsupported files are caught and reported instead of crashing.
 
 ## Using the exported config
@@ -23,11 +25,32 @@ const overrides = {
 
 scene.traverse((o) => {
   const c = overrides[o.name];
-  if (c && o.material) {
-    o.material.color?.set(c.color);
-    o.material.metalness = c.metalness;
-    o.material.roughness = c.roughness;
-  }
+  const m = o.material; // a MeshStandardMaterial / MeshPhysicalMaterial
+  if (!c || !m) return;
+
+  m.color?.set(c.color);
+  m.emissive?.set(c.emissive);
+  m.emissiveIntensity = c.emissiveIntensity;
+  m.metalness = c.metalness;
+  m.roughness = c.roughness;
+  m.envMapIntensity = c.envMapIntensity;
+  m.wireframe = c.wireframe;
+  m.flatShading = c.flatShading;
+  m.opacity = c.opacity;
+  m.transparent = c.opacity < 1 || c.transmission > 0;
+
+  // Physical-only fields (apply to a MeshPhysicalMaterial):
+  Object.assign(m, {
+    clearcoat: c.clearcoat,
+    clearcoatRoughness: c.clearcoatRoughness,
+    transmission: c.transmission,
+    ior: c.ior,
+    thickness: c.thickness,
+    sheen: c.sheen,
+    iridescence: c.iridescence,
+  });
+  m.sheenColor?.set(c.sheenColor);
+  m.needsUpdate = true;
 });
 ```
 

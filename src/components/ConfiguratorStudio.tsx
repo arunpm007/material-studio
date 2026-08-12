@@ -1,4 +1,14 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ComponentProps,
+  type ComponentRef,
+  type ReactNode,
+} from "react";
 import { Canvas } from "@react-three/fiber";
 import {
   OrbitControls,
@@ -7,16 +17,54 @@ import {
   Lightformer,
 } from "@react-three/drei";
 import Model, {
+  type AnimState,
+  type ClipInfo,
+  type MatConfig,
   type Overrides,
   type PartInfo,
-  type MatConfig,
 } from "./Model";
 import { ErrorBoundary } from "./ErrorBoundary";
 
 const SAMPLE_URL =
   "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/main/2.0/DamagedHelmet/glTF-Binary/DamagedHelmet.glb";
+// Fox has 3 clips (Survey / Walk / Run) — ideal for demoing animation.
+const ANIMATED_SAMPLE_URL =
+  "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/main/2.0/Fox/glTF-Binary/Fox.glb";
 
-function Field({ label, children }: { label: React.ReactNode; children: React.ReactNode }) {
+type EnvPreset = NonNullable<ComponentProps<typeof Environment>["preset"]>;
+const PRESETS: EnvPreset[] = [
+  "apartment",
+  "city",
+  "dawn",
+  "forest",
+  "lobby",
+  "night",
+  "park",
+  "studio",
+  "sunset",
+  "warehouse",
+];
+
+type EnvMode = "studio" | "preset" | "hdr";
+type NumKey =
+  | "emissiveIntensity"
+  | "metalness"
+  | "roughness"
+  | "clearcoat"
+  | "clearcoatRoughness"
+  | "envMapIntensity"
+  | "transmission"
+  | "ior"
+  | "thickness"
+  | "opacity"
+  | "sheen"
+  | "iridescence";
+type ColKey = "color" | "emissive" | "sheenColor";
+type BoolKey = "wireframe" | "flatShading";
+
+// ---------------------------------------------------------------- small UI atoms
+
+function Field({ label, children }: { label: ReactNode; children: ReactNode }) {
   return (
     <label className="flex items-center justify-between gap-3 text-sm">
       <span className="text-muted">{label}</span>
@@ -24,6 +72,61 @@ function Field({ label, children }: { label: React.ReactNode; children: React.Re
     </label>
   );
 }
+
+function Switch({ on }: { on: boolean }) {
+  return (
+    <span
+      className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${
+        on ? "bg-accent" : "bg-surface-2 ring-1 ring-inset ring-border"
+      }`}
+    >
+      <span
+        className={`inline-block h-5 w-5 transform rounded-full bg-white shadow-sm transition-transform duration-200 ease-out ${
+          on ? "translate-x-[1.375rem]" : "translate-x-0.5"
+        }`}
+      />
+    </span>
+  );
+}
+
+function Section({
+  title,
+  open,
+  onToggle,
+  children,
+}: {
+  title: string;
+  open: boolean;
+  onToggle: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <div className="rounded-xl border border-border bg-surface-2/30">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="flex w-full items-center justify-between px-3 py-2 text-xs font-medium uppercase tracking-wider text-muted transition-colors hover:text-fg"
+      >
+        <span>{title}</span>
+        <svg
+          viewBox="0 0 24 24"
+          className={`h-3.5 w-3.5 transition-transform ${open ? "rotate-180" : ""}`}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={2.2}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
+          <path d="M6 9l6 6 6-6" />
+        </svg>
+      </button>
+      {open && <div className="space-y-3 px-3 pb-3">{children}</div>}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------- studio
 
 export default function ConfiguratorStudio() {
   const [mounted, setMounted] = useState(false);
@@ -33,12 +136,44 @@ export default function ConfiguratorStudio() {
   const [overrides, setOverrides] = useState<Overrides>({});
   const [selected, setSelected] = useState<string | null>(null);
   const [bg, setBg] = useState("#1a1712");
-  const [autoRotate, setAutoRotate] = useState(true);
   const [copied, setCopied] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const objectUrl = useRef<string | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
+
+  // View / interaction
+  const [autoRotate, setAutoRotate] = useState(true);
+  const [spinSpeed, setSpinSpeed] = useState(1.1);
+  const controlsRef = useRef<ComponentRef<typeof OrbitControls>>(null);
+
+  // Material group disclosure
+  const [groups, setGroups] = useState({
+    base: false,
+    surface: true,
+    transmission: false,
+    effects: false,
+    display: false,
+  });
+  const toggleGroup = (k: keyof typeof groups) =>
+    setGroups((g) => ({ ...g, [k]: !g[k] }));
+
+  // Environment
+  const [envMode, setEnvMode] = useState<EnvMode>("studio");
+  const [envPreset, setEnvPreset] = useState<EnvPreset>("sunset");
+  const [envBackground, setEnvBackground] = useState(false);
+  const [hdrUrl, setHdrUrl] = useState<string | null>(null);
+  const [hdrName, setHdrName] = useState<string | null>(null);
+  const hdrObjectUrl = useRef<string | null>(null);
+  const hdrInput = useRef<HTMLInputElement>(null);
+
+  // Animation
+  const [clips, setClips] = useState<ClipInfo[]>([]);
+  const [animClip, setAnimClip] = useState<string | null>(null);
+  const [animPlaying, setAnimPlaying] = useState(true);
+  const [animLoop, setAnimLoop] = useState(true);
+  const [animSpeed, setAnimSpeed] = useState(1);
+  const [animSeek, setAnimSeek] = useState<number | null>(null);
 
   useEffect(() => setMounted(true), []);
 
@@ -48,19 +183,32 @@ export default function ConfiguratorStudio() {
       objectUrl.current = null;
     }
   };
+  const revokeHdr = () => {
+    if (hdrObjectUrl.current) {
+      URL.revokeObjectURL(hdrObjectUrl.current);
+      hdrObjectUrl.current = null;
+    }
+  };
 
   // Called by the model once it knows its parts (new model → reseed).
   const handleParts = useCallback((p: PartInfo[]) => {
     setParts(p);
     setOverrides(
       Object.fromEntries(
-        p.map((x) => [
-          x.name,
-          { color: x.color, metalness: x.metalness, roughness: x.roughness },
-        ])
+        p.map(({ name, ...cfg }) => [name, cfg as MatConfig])
       )
     );
-    setSelected((prev) => (prev && p.some((x) => x.name === prev) ? prev : p[0]?.name ?? null));
+    setSelected((prev) =>
+      prev && p.some((x) => x.name === prev) ? prev : p[0]?.name ?? null
+    );
+  }, []);
+
+  // Called by the model with its animation clips (new model → reset transport).
+  const handleAnimations = useCallback((c: ClipInfo[]) => {
+    setClips(c);
+    setAnimClip(c[0]?.name ?? null);
+    setAnimPlaying(true);
+    setAnimSeek(null);
   }, []);
 
   const handleModelError = useCallback(() => {
@@ -82,11 +230,11 @@ export default function ConfiguratorStudio() {
     setModelUrl(u);
   };
 
-  const loadSample = () => {
+  const loadSample = (url: string) => {
     setError(null);
     revoke();
-    setUrlInput(SAMPLE_URL);
-    setModelUrl(SAMPLE_URL);
+    setUrlInput(url);
+    setModelUrl(url);
   };
 
   const resetDemo = () => {
@@ -110,6 +258,21 @@ export default function ConfiguratorStudio() {
     setModelUrl(url);
   };
 
+  const loadHdr = (file: File | null | undefined) => {
+    if (!file) return;
+    if (!/\.(hdr|exr)$/i.test(file.name)) {
+      setError("Please choose a .hdr or .exr environment file.");
+      return;
+    }
+    revokeHdr();
+    const url = URL.createObjectURL(file);
+    hdrObjectUrl.current = url;
+    setError(null);
+    setHdrName(file.name);
+    setHdrUrl(url);
+    setEnvMode("hdr");
+  };
+
   const onDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setDragOver(false);
@@ -117,6 +280,7 @@ export default function ConfiguratorStudio() {
   };
 
   useEffect(() => () => revoke(), []);
+  useEffect(() => () => revokeHdr(), []);
 
   const configJson = useMemo(() => JSON.stringify(overrides, null, 2), [overrides]);
 
@@ -130,7 +294,87 @@ export default function ConfiguratorStudio() {
     }
   };
 
+  const anim: AnimState = {
+    clip: animClip,
+    playing: animPlaying,
+    loop: animLoop,
+    speed: animSpeed,
+    seek: animSeek,
+  };
+
   const sel = selected ? overrides[selected] : null;
+  const activeClip = clips.find((c) => c.name === animClip) ?? clips[0] ?? null;
+
+  // ---- material row helpers (depend on the selected part) ------------------
+  const range = (label: string, key: NumKey, min = 0, max = 1, step = 0.01) => {
+    if (!sel) return null;
+    const val = sel[key];
+    return (
+      <Field
+        label={
+          <>
+            {label}{" "}
+            <span className="font-mono text-xs text-faint">{val.toFixed(2)}</span>
+          </>
+        }
+      >
+        <input
+          type="range"
+          min={min}
+          max={max}
+          step={step}
+          value={val}
+          onChange={(e) =>
+            updateSel({ [key]: parseFloat(e.target.value) } as Partial<MatConfig>)
+          }
+          className="w-32 cursor-pointer"
+        />
+      </Field>
+    );
+  };
+
+  const color = (label: string, key: ColKey) => {
+    if (!sel) return null;
+    const val = sel[key];
+    return (
+      <Field label={label}>
+        <span className="flex items-center gap-2">
+          <input
+            value={val}
+            onChange={(e) =>
+              updateSel({ [key]: e.target.value } as Partial<MatConfig>)
+            }
+            className="w-20 rounded border border-border bg-surface px-2 py-1 font-mono text-xs uppercase text-fg"
+          />
+          <input
+            type="color"
+            value={val}
+            onChange={(e) =>
+              updateSel({ [key]: e.target.value } as Partial<MatConfig>)
+            }
+            className="h-7 w-9 cursor-pointer rounded border border-border bg-transparent"
+          />
+        </span>
+      </Field>
+    );
+  };
+
+  const toggle = (label: string, key: BoolKey) => {
+    if (!sel) return null;
+    const val = sel[key];
+    return (
+      <button
+        type="button"
+        role="switch"
+        aria-checked={val}
+        onClick={() => updateSel({ [key]: !val } as Partial<MatConfig>)}
+        className="flex w-full items-center justify-between text-sm text-muted transition-colors hover:text-fg"
+      >
+        <span>{label}</span>
+        <Switch on={val} />
+      </button>
+    );
+  };
 
   return (
     <div
@@ -145,8 +389,8 @@ export default function ConfiguratorStudio() {
       onDragLeave={() => setDragOver(false)}
       onDrop={onDrop}
     >
-      {/* 3D stage — a sized region on mobile (top half) so the model is never
-          hidden behind the sheet; full-bleed behind the floating panel on ≥sm. */}
+      {/* 3D stage — sized region on mobile (top) so the model is never hidden
+          behind the sheet; full-bleed behind the floating panel on ≥sm. */}
       <div className="relative min-h-0 flex-1 sm:absolute sm:inset-0 sm:flex-none">
         {mounted && (
           <Canvas
@@ -164,20 +408,39 @@ export default function ConfiguratorStudio() {
             />
             <directionalLight position={[-5, 2, -3]} intensity={0.6} />
 
-            <ErrorBoundary key={modelUrl ?? "demo"} onError={handleModelError}>
-              <Model url={modelUrl} overrides={overrides} onParts={handleParts} />
-            </ErrorBoundary>
+            <Suspense fallback={null}>
+              <ErrorBoundary key={modelUrl ?? "demo"} onError={handleModelError}>
+                <Model
+                  url={modelUrl}
+                  overrides={overrides}
+                  anim={anim}
+                  onParts={handleParts}
+                  onAnimations={handleAnimations}
+                />
+              </ErrorBoundary>
+
+              {envMode === "studio" && (
+                <Environment resolution={256} background={envBackground}>
+                  <Lightformer intensity={2} position={[0, 3, -2]} scale={[8, 3, 1]} />
+                  <Lightformer intensity={1.3} position={[-4, 1, 2]} scale={[4, 4, 1]} />
+                  <Lightformer intensity={1} position={[4, 1, 2]} scale={[4, 4, 1]} />
+                </Environment>
+              )}
+              {envMode === "preset" && (
+                <Environment preset={envPreset} background={envBackground} />
+              )}
+              {envMode === "hdr" && hdrUrl && (
+                <Environment files={hdrUrl} background={envBackground} />
+              )}
+            </Suspense>
 
             <ContactShadows position={[0, -1.35, 0]} opacity={0.5} scale={10} blur={2.6} far={4} />
-            <Environment resolution={256}>
-              <Lightformer intensity={2} position={[0, 3, -2]} scale={[8, 3, 1]} />
-              <Lightformer intensity={1.3} position={[-4, 1, 2]} scale={[4, 4, 1]} />
-              <Lightformer intensity={1} position={[4, 1, 2]} scale={[4, 4, 1]} />
-            </Environment>
 
             <OrbitControls
+              ref={controlsRef}
               autoRotate={autoRotate}
-              autoRotateSpeed={1.1}
+              autoRotateSpeed={spinSpeed}
+              onStart={() => setAutoRotate(false)}
               enablePan={false}
               minDistance={2.4}
               maxDistance={9}
@@ -194,19 +457,29 @@ export default function ConfiguratorStudio() {
       )}
 
       {/* Top bar */}
-      <div className="pointer-events-none absolute inset-x-0 top-0 flex items-center justify-end px-5 py-4 sm:px-8">
+      <div className="pointer-events-none absolute inset-x-0 top-0 flex items-center justify-between px-5 py-4 sm:px-8">
         <span className="pointer-events-auto inline-flex items-center gap-2 rounded-full border border-border bg-surface/60 px-4 py-2 font-mono text-[11px] uppercase tracking-[0.2em] text-faint backdrop-blur-md">
           <span className="h-1.5 w-1.5 rounded-full bg-accent" />
           Material Studio
         </span>
+        <button
+          type="button"
+          onClick={() => controlsRef.current?.reset()}
+          className="pointer-events-auto inline-flex items-center gap-1.5 rounded-full border border-border bg-surface/60 px-3 py-2 text-xs text-muted backdrop-blur-md transition-colors hover:text-fg"
+          title="Reset view"
+        >
+          <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M3 12a9 9 0 1 0 3-6.7L3 8m0-5v5h5" />
+          </svg>
+          Reset view
+        </button>
       </div>
 
-      {/* Control panel — in-flow bottom sheet on mobile (never covers the
-          stage); floating side panel on ≥sm. */}
+      {/* Control panel — in-flow bottom sheet on mobile; floating side panel on ≥sm. */}
       <div className="pointer-events-auto z-10 w-full shrink-0 max-h-[52dvh] overflow-y-auto overscroll-contain rounded-t-2xl border border-border bg-surface/90 p-4 backdrop-blur-xl sm:absolute sm:inset-x-auto sm:right-4 sm:top-4 sm:bottom-4 sm:max-h-[calc(100dvh-2rem)] sm:w-80 sm:rounded-2xl sm:bg-surface/85 sm:p-5">
         <h1 className="font-heading text-lg font-bold text-fg">Material Studio</h1>
         <p className="mt-1 text-xs text-faint">
-          Load any GLB, tweak each part, copy the config into your project.
+          Load any GLB, tune the full PBR set, preview animations, copy the config.
         </p>
 
         {/* Model loader */}
@@ -249,8 +522,11 @@ export default function ConfiguratorStudio() {
               </svg>
               Upload .glb
             </button>
-            <button type="button" onClick={loadSample} className="cursor-pointer rounded-md border border-border bg-surface-2/50 px-2.5 py-1.5 text-muted transition-colors hover:text-fg">
+            <button type="button" onClick={() => loadSample(SAMPLE_URL)} className="cursor-pointer rounded-md border border-border bg-surface-2/50 px-2.5 py-1.5 text-muted transition-colors hover:text-fg">
               Load sample
+            </button>
+            <button type="button" onClick={() => loadSample(ANIMATED_SAMPLE_URL)} className="cursor-pointer rounded-md border border-border bg-surface-2/50 px-2.5 py-1.5 text-muted transition-colors hover:text-fg">
+              Animated sample
             </button>
             <button type="button" onClick={resetDemo} className="cursor-pointer rounded-md border border-border bg-surface-2/50 px-2.5 py-1.5 text-muted transition-colors hover:text-fg">
               Reset to demo
@@ -285,69 +561,211 @@ export default function ConfiguratorStudio() {
 
         {/* Material controls */}
         {sel && (
-          <div className="mt-4 space-y-3 rounded-xl border border-border bg-surface-2/30 p-3">
-            <Field label="Color">
-              <span className="flex items-center gap-2">
-                <input
-                  value={sel.color}
-                  onChange={(e) => updateSel({ color: e.target.value })}
-                  className="w-20 rounded border border-border bg-surface px-2 py-1 font-mono text-xs uppercase text-fg"
-                />
-                <input
-                  type="color"
-                  value={sel.color}
-                  onChange={(e) => updateSel({ color: e.target.value })}
-                  className="h-7 w-9 cursor-pointer rounded border border-border bg-transparent"
-                />
-              </span>
-            </Field>
-            <Field
-              label={
-                <>
-                  Metalness{" "}
-                  <span className="font-mono text-xs text-faint">
-                    {sel.metalness.toFixed(2)}
-                  </span>
-                </>
-              }
-            >
-              <input
-                type="range"
-                min={0}
-                max={1}
-                step={0.01}
-                value={sel.metalness}
-                onChange={(e) => updateSel({ metalness: parseFloat(e.target.value) })}
-                className="w-32 cursor-pointer"
-              />
-            </Field>
-            <Field
-              label={
-                <>
-                  Roughness{" "}
-                  <span className="font-mono text-xs text-faint">
-                    {sel.roughness.toFixed(2)}
-                  </span>
-                </>
-              }
-            >
-              <input
-                type="range"
-                min={0}
-                max={1}
-                step={0.01}
-                value={sel.roughness}
-                onChange={(e) => updateSel({ roughness: parseFloat(e.target.value) })}
-                className="w-32 cursor-pointer"
-              />
-            </Field>
+          <div className="mt-4 space-y-2.5">
+            <Section title="Base color" open={groups.base} onToggle={() => toggleGroup("base")}>
+              {color("Color", "color")}
+              {color("Emissive", "emissive")}
+              {range("Emissive glow", "emissiveIntensity", 0, 4, 0.05)}
+            </Section>
+
+            <Section title="Surface" open={groups.surface} onToggle={() => toggleGroup("surface")}>
+              {range("Metalness", "metalness")}
+              {range("Roughness", "roughness")}
+              {range("Clearcoat", "clearcoat")}
+              {range("Clearcoat rough", "clearcoatRoughness")}
+              {range("Reflections", "envMapIntensity", 0, 3, 0.05)}
+            </Section>
+
+            <Section title="Transmission (glass)" open={groups.transmission} onToggle={() => toggleGroup("transmission")}>
+              {range("Transmission", "transmission")}
+              {range("IOR", "ior", 1, 2.333, 0.01)}
+              {range("Thickness", "thickness", 0, 5, 0.1)}
+              {range("Opacity", "opacity")}
+            </Section>
+
+            <Section title="Effects" open={groups.effects} onToggle={() => toggleGroup("effects")}>
+              {range("Sheen", "sheen")}
+              {color("Sheen color", "sheenColor")}
+              {range("Iridescence", "iridescence")}
+            </Section>
+
+            <Section title="Display" open={groups.display} onToggle={() => toggleGroup("display")}>
+              {toggle("Wireframe", "wireframe")}
+              {toggle("Flat shading", "flatShading")}
+            </Section>
           </div>
         )}
 
-        {/* Scene */}
-        <div className="mt-4 space-y-3">
-          <p className="text-xs font-medium uppercase tracking-wider text-muted">Scene</p>
-          <Field label="Background">
+        {/* Animation */}
+        {clips.length > 0 && (
+          <div className="mt-5 space-y-3">
+            <p className="text-xs font-medium uppercase tracking-wider text-muted">Animation</p>
+            {clips.length > 1 && (
+              <select
+                value={animClip ?? ""}
+                onChange={(e) => {
+                  setAnimClip(e.target.value);
+                  setAnimSeek(null);
+                  setAnimPlaying(true);
+                }}
+                className="w-full rounded-lg border border-border bg-surface-2/60 px-2 py-2 text-sm text-fg focus:border-accent/60 focus:outline-none"
+              >
+                {clips.map((c) => (
+                  <option key={c.name} value={c.name}>
+                    {c.name || "(unnamed clip)"}
+                  </option>
+                ))}
+              </select>
+            )}
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setAnimSeek(null);
+                  setAnimPlaying((p) => !p);
+                }}
+                className="inline-flex flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-lg bg-accent px-3 py-2 text-sm font-medium text-bg transition-colors hover:bg-accent-soft"
+              >
+                {animPlaying ? (
+                  <>
+                    <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 fill-current" aria-hidden="true"><path d="M7 5h4v14H7zM13 5h4v14h-4z" /></svg>
+                    Pause
+                  </>
+                ) : (
+                  <>
+                    <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 fill-current" aria-hidden="true"><path d="M7 5l12 7-12 7z" /></svg>
+                    Play
+                  </>
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={() => setAnimLoop((l) => !l)}
+                aria-pressed={animLoop}
+                className={`inline-flex cursor-pointer items-center gap-1.5 rounded-lg border px-3 py-2 text-sm transition-colors ${
+                  animLoop
+                    ? "border-accent/50 bg-accent/10 text-accent-soft"
+                    : "border-border bg-surface-2/50 text-muted hover:text-fg"
+                }`}
+                title="Loop"
+              >
+                <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M17 2l4 4-4 4" /><path d="M3 11V9a4 4 0 0 1 4-4h14" /><path d="M7 22l-4-4 4-4" /><path d="M21 13v2a4 4 0 0 1-4 4H3" />
+                </svg>
+                Loop
+              </button>
+            </div>
+            <Field
+              label={
+                <>
+                  Speed{" "}
+                  <span className="font-mono text-xs text-faint">{animSpeed.toFixed(1)}×</span>
+                </>
+              }
+            >
+              <input
+                type="range"
+                min={0.1}
+                max={3}
+                step={0.1}
+                value={animSpeed}
+                onChange={(e) => setAnimSpeed(parseFloat(e.target.value))}
+                className="w-32 cursor-pointer"
+              />
+            </Field>
+            {activeClip && activeClip.duration > 0 && (
+              <Field label="Scrub">
+                <input
+                  type="range"
+                  min={0}
+                  max={activeClip.duration}
+                  step={activeClip.duration / 200}
+                  value={animSeek ?? 0}
+                  onChange={(e) => {
+                    setAnimPlaying(false);
+                    setAnimSeek(parseFloat(e.target.value));
+                  }}
+                  className="w-32 cursor-pointer"
+                />
+              </Field>
+            )}
+          </div>
+        )}
+
+        {/* Environment */}
+        <div className="mt-5 space-y-3">
+          <p className="text-xs font-medium uppercase tracking-wider text-muted">Environment</p>
+          <div className="grid grid-cols-3 gap-1 rounded-lg border border-border bg-surface-2/40 p-1 text-xs">
+            {(["studio", "preset", "hdr"] as EnvMode[]).map((m) => (
+              <button
+                key={m}
+                type="button"
+                onClick={() => setEnvMode(m)}
+                className={`rounded-md px-2 py-1.5 capitalize transition-colors ${
+                  envMode === m ? "bg-accent font-medium text-bg" : "text-muted hover:text-fg"
+                }`}
+              >
+                {m === "hdr" ? "HDR" : m}
+              </button>
+            ))}
+          </div>
+
+          {envMode === "preset" && (
+            <>
+              <select
+                value={envPreset}
+                onChange={(e) => setEnvPreset(e.target.value as EnvPreset)}
+                className="w-full rounded-lg border border-border bg-surface-2/60 px-2 py-2 text-sm capitalize text-fg focus:border-accent/60 focus:outline-none"
+              >
+                {PRESETS.map((p) => (
+                  <option key={p} value={p} className="capitalize">
+                    {p}
+                  </option>
+                ))}
+              </select>
+              <p className="text-[11px] text-faint">Presets stream an HDRI from the pmndrs CDN.</p>
+            </>
+          )}
+
+          {envMode === "hdr" && (
+            <>
+              <input
+                ref={hdrInput}
+                type="file"
+                accept=".hdr,.exr"
+                className="hidden"
+                onChange={(e) => {
+                  loadHdr(e.target.files?.[0]);
+                  e.target.value = "";
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => hdrInput.current?.click()}
+                className="inline-flex w-full cursor-pointer items-center justify-center gap-1.5 rounded-lg border border-accent/50 bg-accent/10 px-3 py-2 text-sm text-accent-soft transition-colors hover:bg-accent/20"
+              >
+                <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M12 16V4m0 0L7 9m5-5l5 5M5 20h14" />
+                </svg>
+                Upload .hdr / .exr
+              </button>
+              <p className="truncate text-[11px] text-faint">
+                {hdrName ?? "No environment loaded yet."}
+              </p>
+            </>
+          )}
+
+          <button
+            type="button"
+            role="switch"
+            aria-checked={envBackground}
+            onClick={() => setEnvBackground((v) => !v)}
+            className="flex w-full items-center justify-between text-sm text-muted transition-colors hover:text-fg"
+          >
+            <span>Show as background</span>
+            <Switch on={envBackground} />
+          </button>
+          <Field label="Background color">
             <input
               type="color"
               value={bg}
@@ -355,6 +773,11 @@ export default function ConfiguratorStudio() {
               className="h-7 w-9 cursor-pointer rounded border border-border bg-transparent"
             />
           </Field>
+        </div>
+
+        {/* View */}
+        <div className="mt-5 space-y-3">
+          <p className="text-xs font-medium uppercase tracking-wider text-muted">View</p>
           <button
             type="button"
             role="switch"
@@ -364,17 +787,35 @@ export default function ConfiguratorStudio() {
             className="flex w-full cursor-pointer items-center justify-between gap-3 rounded-lg border border-border bg-surface-2/50 px-3 py-2 text-sm text-muted transition-colors hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
           >
             <span>Auto-rotate</span>
-            <span
-              className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${
-                autoRotate ? "bg-accent" : "bg-surface-2 ring-1 ring-inset ring-border"
-              }`}
-            >
-              <span
-                className={`inline-block h-5 w-5 transform rounded-full bg-white shadow-sm transition-transform duration-200 ease-out ${
-                  autoRotate ? "translate-x-[1.375rem]" : "translate-x-0.5"
-                }`}
-              />
-            </span>
+            <Switch on={autoRotate} />
+          </button>
+          <Field
+            label={
+              <>
+                Spin speed{" "}
+                <span className="font-mono text-xs text-faint">{spinSpeed.toFixed(1)}</span>
+              </>
+            }
+          >
+            <input
+              type="range"
+              min={0}
+              max={4}
+              step={0.1}
+              value={spinSpeed}
+              onChange={(e) => setSpinSpeed(parseFloat(e.target.value))}
+              className="w-32 cursor-pointer"
+            />
+          </Field>
+          <button
+            type="button"
+            onClick={() => controlsRef.current?.reset()}
+            className="flex w-full cursor-pointer items-center justify-center gap-1.5 rounded-lg border border-border bg-surface-2/50 px-3 py-2 text-sm text-muted transition-colors hover:text-fg"
+          >
+            <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M3 12a9 9 0 1 0 3-6.7L3 8m0-5v5h5" />
+            </svg>
+            Reset view
           </button>
         </div>
 
