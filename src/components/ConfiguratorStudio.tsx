@@ -9,7 +9,8 @@ import {
   type ComponentRef,
   type ReactNode,
 } from "react";
-import { Canvas } from "@react-three/fiber";
+import * as THREE from "three";
+import { Canvas, useThree } from "@react-three/fiber";
 import {
   OrbitControls,
   ContactShadows,
@@ -181,6 +182,32 @@ function Section({
       {open && <div className="space-y-3 px-3 pb-3">{children}</div>}
     </div>
   );
+}
+
+/**
+ * On desktop the control panel floats over the right edge of the full-bleed
+ * canvas. Offset the camera frustum so the model stays centred in the *visible*
+ * area (to the left of the panel) instead of drifting under it. Orbit/zoom are
+ * unaffected. On mobile the panel sits below the canvas, so no offset is needed.
+ */
+function CenterInView() {
+  const camera = useThree((s) => s.camera);
+  const width = useThree((s) => s.size.width);
+  const height = useThree((s) => s.size.height);
+
+  useEffect(() => {
+    const cam = camera as THREE.PerspectiveCamera;
+    const PANEL = 336; // ~21rem: w-80 panel (20rem) + right-4 gap (1rem)
+    const floatingPanel = width >= 640; // matches the sm: layout breakpoint
+    if (floatingPanel) {
+      cam.setViewOffset(width, height, PANEL / 2, 0, width, height);
+    } else {
+      cam.clearViewOffset();
+    }
+    return () => cam.clearViewOffset();
+  }, [camera, width, height]);
+
+  return null;
 }
 
 // ---------------------------------------------------------------- studio
@@ -494,6 +521,7 @@ export default function ConfiguratorStudio() {
             camera={{ position: [3.4, 1.6, 4.4], fov: 45 }}
             gl={{ antialias: true, alpha: true, powerPreference: "high-performance" }}
           >
+            <CenterInView />
             <ambientLight intensity={0.5} />
             <directionalLight
               position={[4, 6, 4]}
