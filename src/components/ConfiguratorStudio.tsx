@@ -16,7 +16,7 @@ import { ErrorBoundary } from "./ErrorBoundary";
 const SAMPLE_URL =
   "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/main/2.0/DamagedHelmet/glTF-Binary/DamagedHelmet.glb";
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({ label, children }: { label: React.ReactNode; children: React.ReactNode }) {
   return (
     <label className="flex items-center justify-between gap-3 text-sm">
       <span className="text-muted">{label}</span>
@@ -32,7 +32,7 @@ export default function ConfiguratorStudio() {
   const [parts, setParts] = useState<PartInfo[]>([]);
   const [overrides, setOverrides] = useState<Overrides>({});
   const [selected, setSelected] = useState<string | null>(null);
-  const [bg, setBg] = useState("#111a2e");
+  const [bg, setBg] = useState("#1a1712");
   const [autoRotate, setAutoRotate] = useState(true);
   const [copied, setCopied] = useState(false);
   const [dragOver, setDragOver] = useState(false);
@@ -136,7 +136,7 @@ export default function ConfiguratorStudio() {
     <div
       className="relative h-[100dvh] w-full overflow-hidden"
       style={{
-        background: `radial-gradient(120% 120% at 50% 30%, ${bg} 0%, #070b14 60%, #05080f 100%)`,
+        background: `radial-gradient(120% 120% at 50% 30%, ${bg} 0%, #0b0b0d 60%, #08080a 100%)`,
       }}
       onDragOver={(e) => {
         e.preventDefault();
@@ -191,13 +191,14 @@ export default function ConfiguratorStudio() {
 
       {/* Top bar */}
       <div className="pointer-events-none absolute inset-x-0 top-0 flex items-center justify-end px-5 py-4 sm:px-8">
-        <span className="pointer-events-auto rounded-full border border-border bg-surface/60 px-4 py-2 text-xs uppercase tracking-[0.2em] text-faint backdrop-blur-md">
+        <span className="pointer-events-auto inline-flex items-center gap-2 rounded-full border border-border bg-surface/60 px-4 py-2 font-mono text-[11px] uppercase tracking-[0.2em] text-faint backdrop-blur-md">
+          <span className="h-1.5 w-1.5 rounded-full bg-accent" />
           Material Studio
         </span>
       </div>
 
       {/* Control panel */}
-      <div className="pointer-events-auto absolute inset-x-3 bottom-3 max-h-[62vh] overflow-y-auto rounded-2xl border border-border bg-surface/85 p-5 backdrop-blur-xl sm:inset-x-auto sm:bottom-4 sm:right-4 sm:top-4 sm:max-h-none sm:w-80">
+      <div className="pointer-events-auto absolute inset-x-2 bottom-2 max-h-[68vh] overflow-y-auto overscroll-contain rounded-2xl border border-border bg-surface/85 p-4 backdrop-blur-xl sm:inset-x-auto sm:bottom-4 sm:right-4 sm:top-4 sm:max-h-[calc(100dvh-2rem)] sm:w-80 sm:p-5">
         <h1 className="font-heading text-lg font-bold text-fg">Material Studio</h1>
         <p className="mt-1 text-xs text-faint">
           Load any GLB, tweak each part, copy the config into your project.
@@ -285,7 +286,7 @@ export default function ConfiguratorStudio() {
                 <input
                   value={sel.color}
                   onChange={(e) => updateSel({ color: e.target.value })}
-                  className="w-20 rounded border border-border bg-surface px-2 py-1 text-xs text-fg"
+                  className="w-20 rounded border border-border bg-surface px-2 py-1 font-mono text-xs uppercase text-fg"
                 />
                 <input
                   type="color"
@@ -295,7 +296,16 @@ export default function ConfiguratorStudio() {
                 />
               </span>
             </Field>
-            <Field label={`Metalness ${sel.metalness.toFixed(2)}`}>
+            <Field
+              label={
+                <>
+                  Metalness{" "}
+                  <span className="font-mono text-xs text-faint">
+                    {sel.metalness.toFixed(2)}
+                  </span>
+                </>
+              }
+            >
               <input
                 type="range"
                 min={0}
@@ -303,11 +313,19 @@ export default function ConfiguratorStudio() {
                 step={0.01}
                 value={sel.metalness}
                 onChange={(e) => updateSel({ metalness: parseFloat(e.target.value) })}
-                style={{ accentColor: "#22c55e" }}
                 className="w-32 cursor-pointer"
               />
             </Field>
-            <Field label={`Roughness ${sel.roughness.toFixed(2)}`}>
+            <Field
+              label={
+                <>
+                  Roughness{" "}
+                  <span className="font-mono text-xs text-faint">
+                    {sel.roughness.toFixed(2)}
+                  </span>
+                </>
+              }
+            >
               <input
                 type="range"
                 min={0}
@@ -315,7 +333,6 @@ export default function ConfiguratorStudio() {
                 step={0.01}
                 value={sel.roughness}
                 onChange={(e) => updateSel({ roughness: parseFloat(e.target.value) })}
-                style={{ accentColor: "#22c55e" }}
                 className="w-32 cursor-pointer"
               />
             </Field>
@@ -335,12 +352,23 @@ export default function ConfiguratorStudio() {
           </Field>
           <button
             type="button"
+            role="switch"
+            aria-checked={autoRotate}
+            aria-label="Auto-rotate"
             onClick={() => setAutoRotate((v) => !v)}
-            className="flex w-full cursor-pointer items-center justify-between rounded-lg border border-border bg-surface-2/50 px-3 py-2 text-sm text-muted transition-colors hover:text-fg"
+            className="flex w-full cursor-pointer items-center justify-between gap-3 rounded-lg border border-border bg-surface-2/50 px-3 py-2 text-sm text-muted transition-colors hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
           >
             <span>Auto-rotate</span>
-            <span className={`relative h-5 w-9 rounded-full transition-colors ${autoRotate ? "bg-accent" : "bg-border"}`}>
-              <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white transition-transform ${autoRotate ? "translate-x-4" : "translate-x-0.5"}`} />
+            <span
+              className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${
+                autoRotate ? "bg-accent" : "bg-surface-2 ring-1 ring-inset ring-border"
+              }`}
+            >
+              <span
+                className={`inline-block h-5 w-5 transform rounded-full bg-white shadow-sm transition-transform duration-200 ease-out ${
+                  autoRotate ? "translate-x-[1.375rem]" : "translate-x-0.5"
+                }`}
+              />
             </span>
           </button>
         </div>
@@ -357,7 +385,7 @@ export default function ConfiguratorStudio() {
               {copied ? "Copied!" : "Copy JSON"}
             </button>
           </div>
-          <pre className="max-h-40 overflow-auto rounded-lg border border-border bg-bg/70 p-3 text-[11px] leading-relaxed text-muted">
+          <pre className="max-h-40 overflow-auto rounded-lg border border-border bg-bg/70 p-3 font-mono text-[11px] leading-relaxed text-muted">
             {configJson}
           </pre>
         </div>
