@@ -15,11 +15,8 @@ export class ErrorBoundary extends Component<Props, State> {
     this.props.onError?.(error);
   }
 
-  componentDidUpdate(prev: Props) {
-    if (prev.children !== this.props.children && this.state.hasError) {
-      this.setState({ hasError: false });
-    }
-  }
+  // Recovery is handled by the parent, which remounts this boundary via a
+  // `key` tied to the current model — so a fresh instance starts clean.
 
   render() {
     return this.state.hasError ? null : this.props.children;
