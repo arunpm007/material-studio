@@ -1,4 +1,4 @@
-# 3D Material Studio
+# Finish — 3D Material Studio
 
 A developer tool for **editing 3D model materials in the browser**. Load any glTF/GLB, tweak each part's colour, metalness and roughness live, then copy the config straight into your own React Three Fiber / Three.js project.
 

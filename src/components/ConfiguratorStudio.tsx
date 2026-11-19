@@ -583,7 +583,7 @@ export default function ConfiguratorStudio() {
       <div className="pointer-events-none absolute inset-x-0 top-0 flex items-center justify-between px-5 py-4 sm:px-8">
         <span className="pointer-events-auto inline-flex items-center gap-2 rounded-full border border-border bg-surface/60 px-4 py-2 font-mono text-[11px] uppercase tracking-[0.2em] text-faint backdrop-blur-md">
           <span className="h-1.5 w-1.5 rounded-full bg-accent" />
-          Material Studio
+          Finish · 3D Material Studio
         </span>
         <button
           type="button"
@@ -600,7 +600,7 @@ export default function ConfiguratorStudio() {
 
       {/* Control panel — in-flow bottom sheet on mobile; floating side panel on ≥sm. */}
       <div className="pointer-events-auto z-10 w-full shrink-0 max-h-[52dvh] overflow-y-auto overscroll-contain rounded-t-2xl border border-border bg-surface/90 p-4 backdrop-blur-xl sm:absolute sm:inset-x-auto sm:right-4 sm:top-4 sm:bottom-4 sm:max-h-[calc(100dvh-2rem)] sm:w-80 sm:rounded-2xl sm:bg-surface/85 sm:p-5">
-        <h1 className="font-heading text-lg font-bold text-fg">Material Studio</h1>
+        <h1 className="font-heading text-lg font-bold text-fg">Finish</h1>
         <p className="mt-1 text-xs text-faint">
           Load any GLB, tune the full PBR set, preview animations, copy the config.
         </p>
