@@ -2,7 +2,7 @@
 
 A developer tool for **editing 3D model materials in the browser**. Load any glTF/GLB, tweak each part's colour, metalness and roughness live, then copy the config straight into your own React Three Fiber / Three.js project.
 
-> Live: _add your Vercel URL here_ · Part of [Arun P M's portfolio](https://arun-portfolio.vercel.app)
+> Part of [Arun P M's portfolio](https://github.com/arunpm007/arunpm-portfolio)
 
 ## Features
 
