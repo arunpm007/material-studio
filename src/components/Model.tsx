@@ -16,6 +16,41 @@ import {
 
 export type { AnimState, ClipInfo, MatConfig, Overrides, PartInfo } from "./materials";
 
+/**
+ * Bounds of an object, safe for skinned (animated) models.
+ *
+ * three.js measures a SkinnedMesh through its skeleton's bone matrices, which
+ * are all zeros on a freshly cloned skeleton until the first frame renders. If
+ * we measure before that, the model collapses to a point, looks "zero-sized",
+ * never gets scaled down — and a rigged model like the Fox renders enormous.
+ * three.js also caches that wrong box. So: refresh skeletons, drop cached
+ * boxes, measure; if the result is still empty, fall back to the raw geometry.
+ */
+function measure(object: THREE.Object3D) {
+  object.updateMatrixWorld(true);
+  object.traverse((o) => {
+    const sm = o as THREE.SkinnedMesh;
+    if (sm.isSkinnedMesh) {
+      sm.skeleton.update();
+      sm.computeBoundingBox(); // replace any box cached from zeroed bones
+    }
+  });
+  const box = new THREE.Box3().setFromObject(object);
+  const size = box.getSize(new THREE.Vector3());
+  if (box.isEmpty() || !Number.isFinite(size.x) || Math.max(size.x, size.y, size.z) < 1e-6) {
+    // Fallback: bind-pose geometry bounds, ignoring the skeleton.
+    box.makeEmpty();
+    object.traverse((o) => {
+      const mesh = o as THREE.Mesh;
+      if (!mesh.isMesh || !mesh.geometry) return;
+      if (!mesh.geometry.boundingBox) mesh.geometry.computeBoundingBox();
+      const gb = mesh.geometry.boundingBox;
+      if (gb) box.union(gb.clone().applyMatrix4(mesh.matrixWorld));
+    });
+  }
+  return box;
+}
+
 /** Center + scale any object so its largest dimension is ~2.4 units. */
 function useNormalized(object: THREE.Object3D) {
   const ref = useRef<THREE.Group>(null);
@@ -23,8 +58,9 @@ function useNormalized(object: THREE.Object3D) {
     const g = ref.current;
     if (!g) return;
     g.scale.setScalar(1);
+    g.updateMatrixWorld(true);
     object.position.set(0, 0, 0);
-    const box = new THREE.Box3().setFromObject(object);
+    const box = measure(object);
     const size = box.getSize(new THREE.Vector3());
     const center = box.getCenter(new THREE.Vector3());
     const maxDim = Math.max(size.x, size.y, size.z) || 1;

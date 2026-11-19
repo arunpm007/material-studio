@@ -210,6 +210,34 @@ function CenterInView() {
   return null;
 }
 
+const noop = () => {};
+
+/** Counts itself as an in-flight load while a Suspense fallback is showing. */
+function LoadTracker({ onChange }: { onChange: (delta: number) => void }) {
+  useEffect(() => {
+    onChange(1);
+    return () => onChange(-1);
+  }, [onChange]);
+  return null;
+}
+
+/** Reports a model as shown once it has rendered (i.e. finished loading). */
+function OnShown({ url, onShown }: { url: string | null; onShown: (u: string | null) => void }) {
+  useEffect(() => onShown(url), [url, onShown]);
+  return null;
+}
+
+/** The built-in studio lighting; also the fallback while other lighting loads. */
+function StudioEnvironment({ background }: { background: boolean }) {
+  return (
+    <Environment resolution={256} background={background}>
+      <Lightformer intensity={2} position={[0, 3, -2]} scale={[8, 3, 1]} />
+      <Lightformer intensity={1.3} position={[-4, 1, 2]} scale={[4, 4, 1]} />
+      <Lightformer intensity={1} position={[4, 1, 2]} scale={[4, 4, 1]} />
+    </Environment>
+  );
+}
+
 // ---------------------------------------------------------------- studio
 
 export default function ConfiguratorStudio() {
@@ -229,6 +257,24 @@ export default function ConfiguratorStudio() {
 
   // View / interaction
   const [autoRotate, setAutoRotate] = useState(true);
+  // Auto-rotate pauses while the panel is in use, and resumes when idle.
+  const [panelBusy, setPanelBusy] = useState(false);
+  const idleTimer = useRef<number | null>(null);
+  const notePanelActivity = useCallback(() => {
+    setPanelBusy(true);
+    if (idleTimer.current) window.clearTimeout(idleTimer.current);
+    idleTimer.current = window.setTimeout(() => setPanelBusy(false), 4000);
+  }, []);
+  useEffect(() => () => {
+    if (idleTimer.current) window.clearTimeout(idleTimer.current);
+  }, []);
+  // The canvas is its own React root, so loading state is reported from
+  // inside it: each Suspense fallback counts itself while it is shown.
+  const [pendingLoads, setPendingLoads] = useState(0);
+  const loading = pendingLoads > 0;
+  const trackLoad = useCallback((delta: number) => setPendingLoads((n) => Math.max(0, n + delta)), []);
+  // The last model that finished loading — shown while the next one loads.
+  const [shownUrl, setShownUrl] = useState<string | null>(null);
   const [spinSpeed, setSpinSpeed] = useState(1.1);
   const controlsRef = useRef<ComponentRef<typeof OrbitControls>>(null);
 
@@ -531,7 +577,19 @@ export default function ConfiguratorStudio() {
             />
             <directionalLight position={[-5, 2, -3]} intensity={0.6} />
 
-            <Suspense fallback={null}>
+            {/* Model and lighting load in separate boundaries, so a new
+                environment can never hide the model. */}
+            <Suspense
+              fallback={
+                <>
+                  <LoadTracker onChange={trackLoad} />
+                  {/* Keep the previous model on screen until the new one is ready. */}
+                  {shownUrl !== modelUrl && (
+                    <Model url={shownUrl} overrides={{}} anim={anim} onParts={noop} onAnimations={noop} />
+                  )}
+                </>
+              }
+            >
               <ErrorBoundary key={modelUrl ?? "demo"} onError={handleModelError}>
                 <Model
                   url={modelUrl}
@@ -540,14 +598,20 @@ export default function ConfiguratorStudio() {
                   onParts={handleParts}
                   onAnimations={handleAnimations}
                 />
+                <OnShown url={modelUrl} onShown={setShownUrl} />
               </ErrorBoundary>
+            </Suspense>
 
-              {envMode === "studio" && (
-                <Environment resolution={256} background={envBackground}>
-                  <Lightformer intensity={2} position={[0, 3, -2]} scale={[8, 3, 1]} />
-                  <Lightformer intensity={1.3} position={[-4, 1, 2]} scale={[4, 4, 1]} />
-                  <Lightformer intensity={1} position={[4, 1, 2]} scale={[4, 4, 1]} />
-                </Environment>
+            <Suspense
+              fallback={
+                <>
+                  <LoadTracker onChange={trackLoad} />
+                  <StudioEnvironment background={envBackground} />
+                </>
+              }
+            >
+              {(envMode === "studio" || (envMode === "hdr" && !hdrUrl)) && (
+                <StudioEnvironment background={envBackground} />
               )}
               {envMode === "preset" && (
                 <Environment preset={envPreset} background={envBackground} />
@@ -561,7 +625,7 @@ export default function ConfiguratorStudio() {
 
             <OrbitControls
               ref={controlsRef}
-              autoRotate={autoRotate}
+              autoRotate={autoRotate && !panelBusy}
               autoRotateSpeed={spinSpeed}
               onStart={() => setAutoRotate(false)}
               enablePan={false}
@@ -585,6 +649,15 @@ export default function ConfiguratorStudio() {
           <span className="h-1.5 w-1.5 rounded-full bg-accent" />
           Finish · 3D Material Studio
         </span>
+        {loading && (
+          <span
+            role="status"
+            className="pointer-events-none absolute left-1/2 top-4 inline-flex -translate-x-1/2 items-center gap-2 rounded-full border border-border bg-surface/80 px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.18em] text-muted backdrop-blur-md sm:left-[calc(50%-168px)]"
+          >
+            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent" />
+            Loading…
+          </span>
+        )}
         <button
           type="button"
           onClick={() => controlsRef.current?.reset()}
@@ -599,7 +672,12 @@ export default function ConfiguratorStudio() {
       </div>
 
       {/* Control panel — in-flow bottom sheet on mobile; floating side panel on ≥sm. */}
-      <div className="pointer-events-auto z-10 w-full shrink-0 max-h-[52dvh] overflow-y-auto overscroll-contain rounded-t-2xl border border-border bg-surface/90 p-4 backdrop-blur-xl sm:absolute sm:inset-x-auto sm:right-4 sm:top-4 sm:bottom-4 sm:max-h-[calc(100dvh-2rem)] sm:w-80 sm:rounded-2xl sm:bg-surface/85 sm:p-5">
+      <div
+        onPointerDownCapture={notePanelActivity}
+        onKeyDownCapture={notePanelActivity}
+        onChangeCapture={notePanelActivity}
+        onWheelCapture={notePanelActivity}
+        className="pointer-events-auto z-10 w-full shrink-0 max-h-[52dvh] overflow-y-auto overscroll-contain rounded-t-2xl border border-border bg-surface/90 p-4 backdrop-blur-xl sm:absolute sm:inset-x-auto sm:right-4 sm:top-4 sm:bottom-4 sm:max-h-[calc(100dvh-2rem)] sm:w-80 sm:rounded-2xl sm:bg-surface/85 sm:p-5">
         <h1 className="font-heading text-lg font-bold text-fg">Finish</h1>
         <p className="mt-1 text-xs text-faint">
           Load any GLB, tune the full PBR set, preview animations, copy the config.
