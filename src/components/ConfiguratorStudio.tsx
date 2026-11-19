@@ -734,6 +734,24 @@ export default function ConfiguratorStudio() {
             </button>
           </div>
           <p className="text-[11px] text-faint">…or drag &amp; drop a file anywhere.</p>
+          {/* Sample model credits (licence requirement — shown while the sample is on screen) */}
+          {modelUrl === SAMPLE_URL && (
+            <p className="text-[11px] leading-relaxed text-faint">
+              Sample: &ldquo;Battle Damaged Sci-fi Helmet&rdquo; by{" "}
+              <a href="https://sketchfab.com/theblueturtle_" target="_blank" rel="noopener noreferrer" className="underline hover:text-fg">theblueturtle_</a>
+              {" · "}
+              <a href="https://creativecommons.org/licenses/by-nc/4.0/" target="_blank" rel="noopener noreferrer" className="underline hover:text-fg">CC BY-NC</a>
+            </p>
+          )}
+          {modelUrl === ANIMATED_SAMPLE_URL && (
+            <p className="text-[11px] leading-relaxed text-faint">
+              Sample: Fox by{" "}
+              <a href="https://opengameart.org/content/fox-and-shiba" target="_blank" rel="noopener noreferrer" className="underline hover:text-fg">PixelMannen</a>{" "}
+              (CC0) · rig &amp; animation by{" "}
+              <a href="https://sketchfab.com/models/371dea88d7e04a76af5763f2a36866bc" target="_blank" rel="noopener noreferrer" className="underline hover:text-fg">@tomkranis</a>{" "}
+              (<a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener noreferrer" className="underline hover:text-fg">CC BY 4.0</a>)
+            </p>
+          )}
           {error && <p className="text-xs text-red-300">{error}</p>}
         </div>
 

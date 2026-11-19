@@ -2,7 +2,7 @@
 
 A developer tool for **editing 3D model materials in the browser**. Load any glTF/GLB, tweak each part's colour, metalness and roughness live, then copy the config straight into your own React Three Fiber / Three.js project.
 
-> Part of [Arun P M's portfolio](https://github.com/arunpm007/arunpm-portfolio)
+**Live:** [finish-3d.vercel.app](https://finish-3d.vercel.app) · Part of [Arun P M's portfolio](https://github.com/arunpm007/arunpm-portfolio)
 
 ## Features
 
@@ -10,10 +10,10 @@ A developer tool for **editing 3D model materials in the browser**. Load any glT
 - **Full-PBR per-part editing** — every part is upgraded to a `MeshPhysicalMaterial`, so you can tune the complete set with instant feedback: base **colour** + **emissive**, **metalness**, **roughness**, **clearcoat**, **reflections**, **transmission / IOR / thickness** (glass), **sheen**, **iridescence**, **opacity**, plus **wireframe** and **flat-shading** — grouped into collapsible sections.
 - **Revert any edit** — reset a single **group** (icon in each group header), the whole selected **part**, or **all parts** back to the model's original materials; controls only appear once something is actually changed.
 - **Animation playback** — for rigged models, pick a clip, **play / pause**, **loop**, change **speed**, and **scrub** the timeline.
-- **Hold-to-inspect** — grabbing the model instantly stops auto-spin so it holds still while you match a colour on a given face; adjustable spin speed and a one-click **Reset view**.
+- **Hold-to-inspect** — grabbing the model instantly stops auto-spin so it holds still while you match a colour on a given face; auto-spin also pauses while you use the panel and resumes when you stop. Adjustable spin speed and a one-click **Reset view**.
 - **Environment lighting** — procedural **Studio** lighting, streamable **HDRI presets**, or your own **`.hdr` / `.exr`** upload, optionally shown as the background.
 - **Copy the config out** — a live JSON export you can copy and drop into your own project to reproduce the exact look.
-- **Resilient** — bad URLs / unsupported files are caught and reported instead of crashing.
+- **Resilient** — bad URLs / unsupported files are caught and reported instead of crashing, and the current model and lighting stay on screen while a new model or environment loads.
 
 ## Using the exported config
 
@@ -66,13 +66,16 @@ scene.traverse((o) => {
 
 ```bash
 npm install
-npm run dev      # http://localhost:3060
+npm run dev      # http://localhost:5173
 ```
 
 ```bash
 npm run build    # production build
 npm run preview  # preview the build
+npm run lint     # oxlint
 ```
+
+Every push and pull request runs lint, type check and build in GitHub Actions ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)).
 
 ## Structure
 
@@ -88,8 +91,19 @@ src/
 
 ## Deploy
 
-Deploys cleanly to [Vercel](https://vercel.com) as a Vite app (preset: Vite; build `npm run build`; output `dist`).
+Deployed on [Vercel](https://vercel.com) as a Vite app (preset: Vite; build `npm run build`; output `dist`). Pushes to `main` go live automatically.
 
----
+## Feedback
 
-Built by Arun P M.
+Found a bug or have an idea? [Open an issue](https://github.com/arunpm007/material-studio/issues).
+
+## Credits
+
+The built-in samples are loaded from the [Khronos glTF Sample Models](https://github.com/KhronosGroup/glTF-Sample-Models) repository and are **not** covered by this project's licence:
+
+- **Damaged Helmet** — "Battle Damaged Sci-fi Helmet – PBR" by [theblueturtle_](https://sketchfab.com/theblueturtle_), licensed [CC BY-NC](https://creativecommons.org/licenses/by-nc/4.0/) (attribution, non-commercial).
+- **Fox** — low-poly model by [PixelMannen](https://opengameart.org/content/fox-and-shiba) ([CC0](https://creativecommons.org/publicdomain/zero/1.0/)); rigging and animation by [@tomkranis](https://sketchfab.com/models/371dea88d7e04a76af5763f2a36866bc) ([CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)); glTF conversion by @AsoboStudio and @scurest.
+
+## Licence
+
+The code is released under the [MIT License](LICENSE). © 2026 Arun P M.
